@@ -2,7 +2,7 @@
 
 > 方便快捷地将**飞常准**的航班信息 csv 文件转换为可供**一生足迹**读取的 csv 文件
 
-
+![wakatime](https://wakatime.com/badge/github/L1-An/Variflight2Steplife.svg)
 ## 使用方法
 
 > 由于没有写任何用户界面，所以操作全程需要使用编译器(IDEA，别的应该也同理)使用.
