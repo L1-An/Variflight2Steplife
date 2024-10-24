@@ -5,7 +5,6 @@ import com.opencsv.CSVWriter
 import java.io.FileReader
 import java.io.FileWriter
 import java.io.IOException
-import java.text.DecimalFormat
 import java.util.Scanner
 
 fun main() {
@@ -25,7 +24,6 @@ fun main() {
 fun convertCSV() {
     val inputFilePath = "src/main/resources/input.csv"
     val outputFilePath = "src/main/resources/output.csv"
-    val decimalFormat = DecimalFormat("#.#######")
 
     try {
         CSVReader(FileReader(inputFilePath)).use {
@@ -61,7 +59,13 @@ fun convertCSV() {
                 reader.readNext()
 
                 // 创建新的 CSV 文件
-                CSVWriter(FileWriter(outputFilePath)).use { writer ->
+                CSVWriter(
+                    FileWriter(outputFilePath),
+                    CSVWriter.DEFAULT_SEPARATOR,  // 默认分隔符为逗号
+                    CSVWriter.NO_QUOTE_CHARACTER,  // 不使用引号
+                    CSVWriter.DEFAULT_ESCAPE_CHARACTER,
+                    CSVWriter.DEFAULT_LINE_END
+                ).use { writer ->
                     // 写入 header 行
                     writer.writeNext(
                         arrayOf(
@@ -84,10 +88,10 @@ fun convertCSV() {
                     while (reader.readNext().also { nextLine = it } != null) {
                         // 处理数据
                         val dataTime = nextLine!![0]
-                        val longitude = decimalFormat.format(nextLine!![7].toDouble())
-                        val latitude = decimalFormat.format(nextLine!![8].toDouble())
-                        val speed = decimalFormat.format(nextLine!![5].toDouble())
-                        val altitude = decimalFormat.format(nextLine!![4].toDouble())
+                        val longitude = nextLine!![7]
+                        val latitude = nextLine!![8]
+                        val speed = nextLine!![5]
+                        val altitude = nextLine!![4]
                         val outputLine = arrayOf(
                             dataTime, "1", longitude, latitude, "0", "14", speed, "0", "0", "0", altitude
                         )
