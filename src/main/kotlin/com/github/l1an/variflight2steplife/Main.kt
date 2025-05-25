@@ -8,6 +8,7 @@ import java.io.IOException
 import java.util.Scanner
 
 fun main() {
+
     val scanner = Scanner(System.`in`)
 
     println("请选择操作:")
