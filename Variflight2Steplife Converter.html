@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Variflight 2 Steplife</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .container {
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .file-input {
+            margin: 20px 0;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 10px 0;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        #status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #dff0d8;
+            color: #3c763d;
+        }
+        .error {
+            background-color: #f2dede;
+            color: #a94442;
+        }
+        .info {
+            background-color: #d9edf7;
+            color: #31708f;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .preview {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+        }
+        .button-group button {
+            flex: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Variflight 2 Steplife 转换工具</h1>
+        
+        <div class="file-input">
+            <label for="csvFile">选择飞常准CSV文件：</label>
+            <input type="file" id="csvFile" accept=".csv">
+        </div>
+        
+        <div class="button-group">
+            <button id="downloadBtn" onclick="window.open('https://flightadsb.variflight.com/track-data', '_blank')">下载飞常准轨迹</button>
+            <button id="convertBtn" disabled>转换文件</button>
+        </div>
+        
+        <div id="status"></div>
+        
+        <div class="preview">
+            <h3>输入文件预览：</h3>
+            <table id="inputPreview">
+                <thead></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+        
+        <div class="preview">
+            <h3>输出文件预览：</h3>
+            <table id="outputPreview">
+                <thead></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const csvFileInput = document.getElementById('csvFile');
+            const convertBtn = document.getElementById('convertBtn');
+            const statusDiv = document.getElementById('status');
+            const inputPreview = document.getElementById('inputPreview');
+            const outputPreview = document.getElementById('outputPreview');
+            
+            let inputData = [];
+            let outputData = [];
+            
+            // 检查文件是否为飞常准格式
+            function isFeichangzhunFormat(header) {
+                const expectedHeader = [
+                    "Time", "UTC TIME", "Anum", "Fnum", "Height", 
+                    "Speed", "Angle", "Longitude", "Latitude"
+                ];
+                
+                if (!header || header.length < 9) {
+                    return false;
+                }
+                
+                for (let i = 0; i < expectedHeader.length; i++) {
+                    if (header[i] !== expectedHeader[i]) {
+                        return false;
+                    }
+                }
+                
+                return true;
+            }
+            
+            // 解析CSV文件
+            function parseCSV(file) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    
+                    reader.onload = function(e) {
+                        const content = e.target.result;
+                        const lines = content.split('\n');
+                        const result = [];
+                        
+                        for (let i = 0; i < lines.length; i++) {
+                            const line = lines[i].trim();
+                            if (line) {
+                                // 处理带引号的CSV字段
+                                const fields = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
+                                const cleanedFields = fields.map(field => {
+                                    // 移除字段两端的引号
+                                    if (field.startsWith('"') && field.endsWith('"')) {
+                                        return field.substring(1, field.length - 1);
+                                    }
+                                    return field;
+                                });
+                                result.push(cleanedFields);
+                            }
+                        }
+                        
+                        resolve(result);
+                    };
+                    
+                    reader.onerror = function() {
+                        reject(new Error('无法读取文件'));
+                    };
+                    
+                    reader.readAsText(file);
+                });
+            }
+            
+            // 转换数据
+            function convertData(inputData) {
+                if (!inputData || inputData.length === 0) {
+                    return [];
+                }
+                
+                const header = [
+                    "dataTime", "locType", "longitude", "latitude", 
+                    "heading", "accuracy", "speed", "distance", 
+                    "isBackForeground", "stepType", "altitude"
+                ];
+                
+                const result = [header];
+                
+                for (let i = 1; i < inputData.length; i++) {
+                    const row = inputData[i];
+                    if (row.length < 9) continue;
+                    
+                    const dataTime = row[0];
+                    const longitude = row[7];
+                    const latitude = row[8];
+                    const speed = row[5];
+                    const altitude = row[4];
+                    
+                    const outputRow = [
+                        dataTime, "1", longitude, latitude, 
+                        "0", "14", speed, "0", "0", "0", altitude
+                    ];
+                    
+                    result.push(outputRow);
+                }
+                
+                return result;
+            }
+            
+            // 显示表格预览
+            function showPreview(data, tableElement, maxRows = 5) {
+                const thead = tableElement.querySelector('thead');
+                const tbody = tableElement.querySelector('tbody');
+                
+                thead.innerHTML = '';
+                tbody.innerHTML = '';
+                
+                if (!data || data.length === 0) {
+                    return;
+                }
+                
+                // 创建表头
+                const headerRow = document.createElement('tr');
+                data[0].forEach(header => {
+                    const th = document.createElement('th');
+                    th.textContent = header;
+                    headerRow.appendChild(th);
+                });
+                thead.appendChild(headerRow);
+                
+                // 创建数据行
+                const rowsToShow = Math.min(data.length - 1, maxRows);
+                for (let i = 1; i <= rowsToShow; i++) {
+                    const row = document.createElement('tr');
+                    data[i].forEach(cell => {
+                        const td = document.createElement('td');
+                        td.textContent = cell;
+                        row.appendChild(td);
+                    });
+                    tbody.appendChild(row);
+                }
+                
+                if (data.length - 1 > maxRows) {
+                    const moreRow = document.createElement('tr');
+                    const moreCell = document.createElement('td');
+                    moreCell.colSpan = data[0].length;
+                    moreCell.textContent = `...还有 ${data.length - 1 - maxRows} 行未显示`;
+                    moreCell.style.textAlign = 'center';
+                    moreCell.style.fontStyle = 'italic';
+                    moreRow.appendChild(moreCell);
+                    tbody.appendChild(moreRow);
+                }
+            }
+            
+            // 下载CSV文件
+            function downloadCSV(data, filename) {
+                const csvContent = data.map(row => 
+                    row.map(field => 
+                        `"${field.toString().replace(/"/g, '""')}"`
+                    ).join(',')
+                ).join('\n');
+                
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                
+                link.setAttribute('href', url);
+                link.setAttribute('download', filename);
+                link.style.display = 'none';
+                
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+            
+            // 文件选择事件
+            csvFileInput.addEventListener('change', async function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                statusDiv.className = '';
+                statusDiv.textContent = '正在解析文件...';
+                
+                try {
+                    inputData = await parseCSV(file);
+                    
+                    if (inputData.length === 0) {
+                        statusDiv.className = 'error';
+                        statusDiv.textContent = '文件为空或格式不正确';
+                        convertBtn.disabled = true;
+                        return;
+                    }
+                    
+                    // 检查文件格式
+                    if (!isFeichangzhunFormat(inputData[0])) {
+                        statusDiv.className = 'error';
+                        statusDiv.textContent = '错误：输入文件不是飞常准格式';
+                        convertBtn.disabled = true;
+                        return;
+                    }
+                    
+                    statusDiv.className = 'success';
+                    statusDiv.textContent = `文件已加载，共 ${inputData.length - 1} 行数据`;
+                    convertBtn.disabled = false;
+                    
+                    // 显示预览
+                    showPreview(inputData, inputPreview);
+                    
+                } catch (error) {
+                    statusDiv.className = 'error';
+                    statusDiv.textContent = '错误：' + error.message;
+                    convertBtn.disabled = true;
+                }
+            });
+            
+            // 转换按钮点击事件
+            convertBtn.addEventListener('click', function() {
+                if (inputData.length === 0) {
+                    statusDiv.className = 'error';
+                    statusDiv.textContent = '没有可转换的数据';
+                    return;
+                }
+                
+                statusDiv.className = 'info';
+                statusDiv.textContent = '正在转换数据...';
+                
+                try {
+                    outputData = convertData(inputData);
+                    
+                    if (outputData.length === 0) {
+                        statusDiv.className = 'error';
+                        statusDiv.textContent = '转换失败，输出为空';
+                        return;
+                    }
+                    
+                    statusDiv.className = 'success';
+                    statusDiv.textContent = `转换完成，共 ${outputData.length - 1} 行数据`;
+                    
+                    // 显示预览
+                    showPreview(outputData, outputPreview);
+                    
+                    // 自动下载
+                    const inputFileName = csvFileInput.files[0].name;
+                    const outputFileName = inputFileName.replace('.csv', '') + '_converted.csv';
+                    downloadCSV(outputData, outputFileName);
+                    
+                } catch (error) {
+                    statusDiv.className = 'error';
+                    statusDiv.textContent = '转换错误：' + error.message;
+                }
+            });
+        });
+    </script>
+</body>
+</html>
